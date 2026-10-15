@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PDF Nexus
+
+PDF Nexus is a secure, local web application designed to manage and manipulate PDF files. It performs all operations (unlocking, splitting, merging, and compression) completely in-memory, ensuring that your sensitive documents never touch persistent storage or external cloud services.
+
+## Core Features
+
+- **Unlock PDF**: Remove passwords from encrypted PDF documents.
+- **Split PDF**: Extract specific page ranges from a PDF. If multiple ranges are specified, they are automatically packaged into a single ZIP file.
+- **Merge PDFs**: Concatenate multiple PDF files in any custom order.
+
+- **Compress PDF**: Losslessly compress PDF page streams without reducing image quality. Download includes a before-and-after size summary in the app. Already optimized PDFs are returned unchanged if compression cannot save space. Unlock encrypted PDFs first.
+
+---
+
+## Tech Stack
+
+- **Frontend**: Next.js (App Router), TypeScript, Tailwind CSS, Lucide Icons
+- **Backend**: FastAPI, PyPDF
+- **Security**: In-memory PDF processing using python's `io.BytesIO`
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### 1. Prerequisites
+- [Python 3.10+](https://www.python.org/downloads/)
+- [Node.js 18+](https://nodejs.org/en/download/)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+### 2. Run the Backend (FastAPI)
+Open a terminal in the root directory and run the following commands:
+```powershell
+# Navigate to the backend directory
+cd backend
+
+# Activate the virtual environment
+.venv\Scripts\activate
+
+# Start the development server
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
+The API documentation will be available at `http://127.0.0.1:8000/docs`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 3. Run the Frontend (Next.js)
+Open another terminal in the root directory and run:
+```powershell
+# Navigate to the frontend directory
+cd frontend
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+# Install dependencies (if not already installed)
+pnpm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Run the development server
+pnpm dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser to access the application.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Implementation Details
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All PDF manipulations are executed using `pypdf` which processes files as byte streams (`io.BytesIO`). This guarantees that:
+1. No temporary folders/files are created on the server's hard drive.
+2. File data exists only in volatile memory during the HTTP request lifecycle.
+3. PDF payloads are immediately garbage collected after the request finishes.

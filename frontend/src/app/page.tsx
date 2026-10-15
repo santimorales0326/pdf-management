@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import { 
+  Minimize2,
   FileStack, 
   Scissors, 
   Unlock, 
@@ -21,7 +22,7 @@ import {
 
 const API_BASE = "http://127.0.0.1:8000/api";
 
-type Tab = "merge" | "split" | "unlock";
+type Tab = "merge" | "split" | "unlock" | "compress";
 
 interface PageRange {
   start: number;
@@ -36,6 +37,8 @@ export default function Home() {
   const [splitFile, setSplitFile] = useState<File | null>(null);
   const [unlockFile, setUnlockFile] = useState<File | null>(null);
   
+  const [compressFile, setCompressFile] = useState<File | null>(null);
+
   // Operation states
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -54,6 +57,8 @@ export default function Home() {
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const splitInputRef = useRef<HTMLInputElement>(null);
   const unlockInputRef = useRef<HTMLInputElement>(null);
+
+  const compressInputRef = useRef<HTMLInputElement>(null);
 
   // Reset notifications
   const clearStatus = () => {
@@ -98,6 +103,8 @@ export default function Home() {
       setSplitFile(files[0]);
     } else if (activeTab === "unlock") {
       setUnlockFile(files[0]);
+    } else if (activeTab === "compress") {
+      setCompressFile(files[0]);
     }
   };
 
@@ -118,6 +125,8 @@ export default function Home() {
       setSplitFile(files[0]);
     } else if (activeTab === "unlock") {
       setUnlockFile(files[0]);
+    } else if (activeTab === "compress") {
+      setCompressFile(files[0]);
     }
 
     // Reset input value to allow selecting same file again
@@ -162,7 +171,7 @@ export default function Home() {
   };
 
   // Trigger download helper
-  const triggerDownload = (blob: Blob, defaultFilename: string) => {
+  const triggerDownload = (blob: Blob, defaultFilename: string, message?: string) => {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -172,7 +181,7 @@ export default function Home() {
     link.remove();
     
     setSuccess({
-      message: `Successfully processed! Your file "${defaultFilename}" has been downloaded.`,
+      message: message ?? `Successfully processed! Your file "${defaultFilename}" has been downloaded.`,
       downloadUrl: url,
       filename: defaultFilename
     });
@@ -205,8 +214,8 @@ export default function Home() {
       triggerDownload(blob, "merged_documents.pdf");
       // Optional: Clear files on success
       setMergeFiles([]);
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred during merging.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during merging.");
     } finally {
       setLoading(false);
     }
@@ -254,8 +263,8 @@ export default function Home() {
       triggerDownload(blob, filename);
       setSplitFile(null);
       setRanges([{ start: 1, end: 1 }]);
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred during splitting.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during splitting.");
     } finally {
       setLoading(false);
     }
@@ -289,8 +298,35 @@ export default function Home() {
       triggerDownload(blob, filename);
       setUnlockFile(null);
       setPassword("");
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred during unlocking.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during unlocking.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompressSubmit = async () => {
+    if (!compressFile) return;
+    clearStatus();
+    setLoading(true);
+    setLoadingMessage("Compressing your PDF file...");
+    const formData = new FormData();
+    formData.append("file", compressFile);
+    try {
+      const response = await fetch(`${API_BASE}/compress`, { method: "POST", body: formData });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Failed to compress PDF");
+      }
+      const blob = await response.blob();
+      const saved = compressFile.size - blob.size;
+      const message = saved > 0
+        ? `Compressed from ${formatBytes(compressFile.size)} to ${formatBytes(blob.size)}. Saved ${formatBytes(saved)} (${(saved / compressFile.size * 100).toFixed(1)}%). Your file has been downloaded.`
+        : "No further lossless compression was possible. Your original PDF has been downloaded unchanged.";
+      triggerDownload(blob, `${getBaseName(compressFile.name)}_compressed.pdf`, message);
+      setCompressFile(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "An unexpected error occurred during compression.");
     } finally {
       setLoading(false);
     }
@@ -337,7 +373,7 @@ export default function Home() {
 
         {/* Tab Selection */}
         <div className="flex justify-center">
-          <div className="inline-flex p-1 bg-zinc-900/80 border border-zinc-800 rounded-xl backdrop-blur-md shadow-lg">
+          <div className="grid grid-cols-2 sm:flex p-1 bg-zinc-900/80 border border-zinc-800 rounded-xl backdrop-blur-md shadow-lg">
             <button
               onClick={() => { setActiveTab("merge"); clearStatus(); }}
               className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
@@ -370,6 +406,13 @@ export default function Home() {
             >
               <Unlock className="w-4 h-4" />
               Unlock PDF
+            </button>
+            <button
+              onClick={() => { setActiveTab("compress"); clearStatus(); }}
+              className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === "compress" ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <Minimize2 className="w-4 h-4" />
+              Compress PDF
             </button>
           </div>
         </div>
@@ -415,7 +458,8 @@ export default function Home() {
           {/* UPLOAD ZONE (Drag & Drop) */}
           {((activeTab === "merge") || 
             (activeTab === "split" && !splitFile) || 
-            (activeTab === "unlock" && !unlockFile)) && (
+            (activeTab === "unlock" && !unlockFile) ||
+            (activeTab === "compress" && !compressFile)) && (
             <div
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
@@ -424,6 +468,7 @@ export default function Home() {
                 if (activeTab === "merge") mergeInputRef.current?.click();
                 if (activeTab === "split") splitInputRef.current?.click();
                 if (activeTab === "unlock") unlockInputRef.current?.click();
+                if (activeTab === "compress") compressInputRef.current?.click();
               }}
               className={`border-2 border-dashed rounded-xl p-8 sm:p-12 text-center cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-4 ${
                 isDragging
@@ -436,7 +481,7 @@ export default function Home() {
                 multiple={activeTab === "merge"}
                 accept="application/pdf"
                 className="hidden"
-                ref={activeTab === "merge" ? mergeInputRef : activeTab === "split" ? splitInputRef : unlockInputRef}
+                ref={activeTab === "merge" ? mergeInputRef : activeTab === "split" ? splitInputRef : activeTab === "compress" ? compressInputRef : unlockInputRef}
                 onChange={handleFileChange}
               />
               <div className="p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-indigo-400 group-hover:scale-110 transition-transform">
@@ -450,9 +495,31 @@ export default function Home() {
                   }
                 </p>
                 <p className="text-zinc-500 text-xs sm:text-sm">
-                  {activeTab === "merge" ? "Upload 2 or more PDF documents" : "Supported: encrypted or plain PDF"}
+                  {activeTab === "merge" ? "Upload 2 or more PDF documents" : activeTab === "compress" ? "Lossless compression · Unlock protected PDFs first" : "Supported: encrypted or plain PDF"}
                 </p>
               </div>
+            </div>
+          )}
+
+          {activeTab === "compress" && compressFile && (
+            <div className="space-y-6">
+              <div className="bg-zinc-950/60 border border-zinc-850 rounded-xl p-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-zinc-200 text-sm font-semibold truncate">{compressFile.name}</p>
+                  <p className="text-zinc-500 text-xs">{formatBytes(compressFile.size)}</p>
+                </div>
+                <button onClick={() => { setCompressFile(null); clearStatus(); }} aria-label="Remove PDF" className="p-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Reduce file size without lowering image quality. Results depend on the PDF;
+                scanned or already optimized documents may not get smaller. If no space can
+                be saved, you will receive the original file.
+              </p>
+              <button onClick={handleCompressSubmit} disabled={loading} className="w-full py-3 px-4 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-500 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center justify-center gap-2">
+                <Minimize2 className="w-4 h-4" /> Compress PDF
+              </button>
             </div>
           )}
 
